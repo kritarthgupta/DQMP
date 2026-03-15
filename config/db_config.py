@@ -1,14 +1,14 @@
 # DB_CONFIG = {
 #     # 'host': 'localhost',
-#     'host': '192.168.1.29',
+#     'host': '192.168.x.xx',
 #     'user': 'root',
-#     'password': 'Worstdevil28#',
+#     'password': 'xxxxxxxxx#',
 #     'database': 'dqmp'
 # }
 DB_CONFIG = {
-    "host": '192.168.1.29',    # Windows IP (Need to change this when location is changed)
+    "host": '192.168.x.xx',    # Windows IP (Need to change this when location is changed)
     "user": "dqmp_user",       # or "root" if you allowed it
-    "password": "Worstdevil28#", 
+    "password": "xxxxxxxxx", 
     "database": "dqmp"
 }
 
