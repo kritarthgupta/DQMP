@@ -20,16 +20,16 @@ DB_CONFIG = {
 # 2) Enter password: *************
 # 3) mysql> SELECT user, host FROM mysql.user;
 # 4) -- Option A: allow root from any host (not recommended for production)
-# CREATE USER 'root'@'%' IDENTIFIED BY 'Worstdevil28#';
+# CREATE USER 'root'@'%' IDENTIFIED BY 'xxxxxxxxx;
 # GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 
 # -- Option B: safer, create a new user for WSL only (SELECTED-CURRENTLY)
-# CREATE USER 'dqmp_user'@'%' IDENTIFIED BY 'Worstdevil28#';
+# CREATE USER 'dqmp_user'@'%' IDENTIFIED BY 'xxxxxxxxx;
 # GRANT ALL PRIVILEGES ON dqmp.* TO 'dqmp_user'@'%';
 # 5)FLUSH PRIVILEGES;
 # 6)DB_CONFIG = {
-#     "host": "192.168.1.29",  # Windows IP
+#     "host": "192.168.x.xx",  # Windows IP
 #     "user": "dqmp_user",       # or "root" if you allowed it
-#     "password": "Worstdevil28#", 
+#     "password": "xxxxxxxxx", 
 #     "database": "dqmp"
 # }
