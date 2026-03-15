@@ -4,6 +4,7 @@ select * from orders;
 select * from customers;
 select * from table_metadata;
 select * from table_schema_baseline;
+select * from dq_run_summary;
 
 select * from dq_results order by run_ID desc, metric_type desc, table_name;
 select * from dq_alerts;

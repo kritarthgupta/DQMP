@@ -1,104 +1,102 @@
 from datetime import datetime
-from engine import (
-    get_connection,
-    fetch_all,
-    execute,
-    volume_check,
-    null_check,
-    freshness_check,
-    duplicate_check,
-    referential_check,
-    schema_drift_check
-) 
+from engine import * # Importing all functions from __init__.py for easy access
 
 def main():
-    print("🚀 Starting DQMP run...")
+
+    print("\n🚀 Starting Data Quality Monitoring Platform (DQMP) Run")
+    print("* Generated Results in dq_results") 
+    print("* Generated Alerts  in dq_alerts")
+    print("* Generated Summary in dq_run_summary\n")
 
     run_id = datetime.now()
     run_time = datetime.now()
 
     conn = get_connection()
 
-    # -----------------------------
-    # Fetch metadata
-    # -----------------------------
     metadata = fetch_all("SELECT * FROM table_metadata")
 
-    # Group metadata by table
     tables = {}
     for row in metadata:
         tables.setdefault(row["table_name"], []).append(row)
 
-    total_checks = 0
-    total_failures = 0
+    total_possible_checks = 0
+    executed_checks = 0
+    failures = 0
 
-    # -----------------------------
-    # Run DQ checks
-    # -----------------------------
     for table_name, cols in tables.items():
-        print(f"\n🔍 Checking table: {table_name}")
 
-        # -------- Volume Check --------
-        # Pick the first column that has volume thresholds
         meta = next(col for col in cols if col["expected_volume_min"] is not None)
+
+        # ---------------- VOLUME ----------------
         vol, threshold, status = volume_check(
             table_name,
             meta["expected_volume_min"],
             meta["expected_volume_max"],
             conn
         )
-        # Insert Volume result
-        execute("""
-            INSERT INTO dq_results
-            (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (run_id, run_time, table_name, None, "volume", vol, threshold, status))
 
-        total_checks += 1
-        total_failures += (status == "FAIL")
+        insert_dq_result(run_id, run_time, table_name, None, "volume", vol, threshold, status)
 
+        total_possible_checks += 1
+        if status != "SKIP":
+            executed_checks += 1
+            if status == "FAIL":
+                failures += 1
 
-        # -------- Schema Drift Check --------
-        drift, threshold, status, details = schema_drift_check(
+        # ---------------- SCHEMA DRIFT ----------------
+        drift, threshold, status, details = schema_drift_check(table_name, conn)
+
+        insert_dq_result(
+            run_id,
+            run_time,
             table_name,
-            conn
+            None,
+            "schema_drift",
+            drift,
+            threshold,
+            status,
+            details
         )
 
-        # Insert Schema Drift result 
-        execute("""
-        INSERT INTO dq_results
-        (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status, details)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (run_id, run_time, table_name, None,
-            "schema_drift", drift, threshold, status, details))
+        total_possible_checks += 1
+        if status != "SKIP":
+            executed_checks += 1
+            if status == "FAIL":
+                failures += 1
 
-        total_checks += 1
-        total_failures += (status == "FAIL")
-
-        # -------- Column-level Checks --------
+        # ---------------- COLUMN CHECKS ----------------
         for col in cols:
+
             column_name = col["column_name"]
 
-            # Null check
+            # NULL CHECK
             if column_name:
+
                 null_pct, threshold, status = null_check(
                     table_name,
                     column_name,
                     col["is_nullable"],
                     conn
                 )
-                # Insert Null result
-                execute("""
-                    INSERT INTO dq_results
-                    (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (run_id, run_time, table_name, column_name,
-                      "null_pct", null_pct, threshold, status))
 
-                total_checks += 1
-                total_failures += (status == "FAIL")
+                insert_dq_result(
+                    run_id,
+                    run_time,
+                    table_name,
+                    column_name,
+                    "null_pct",
+                    null_pct,
+                    threshold,
+                    status
+                )
 
-            # Duplicate check for primary keys
+                total_possible_checks += 1
+                if status != "SKIP":
+                    executed_checks += 1
+                    if status == "FAIL":
+                        failures += 1
+
+            # DUPLICATE CHECK
             if col.get("is_primary_key") == 1:
 
                 dup_count, threshold, status = duplicate_check(
@@ -107,17 +105,24 @@ def main():
                     conn
                 )
 
-                execute("""
-                    INSERT INTO dq_results
-                    (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (run_id, run_time, table_name, column_name,
-                    "duplicate_count", dup_count, threshold, status))
+                insert_dq_result(
+                    run_id,
+                    run_time,
+                    table_name,
+                    column_name,
+                    "duplicate_count",
+                    dup_count,
+                    threshold,
+                    status
+                )
 
-                total_checks += 1
-                total_failures += (status == "FAIL")
+                total_possible_checks += 1
+                if status != "SKIP":
+                    executed_checks += 1
+                    if status == "FAIL":
+                        failures += 1
 
-            # Referential integrity check
+            # REFERENTIAL CHECK
             if col.get("reference_table"):
 
                 orphan_count, threshold, status = referential_check(
@@ -128,48 +133,64 @@ def main():
                     conn
                 )
 
-                execute("""
-                    INSERT INTO dq_results
-                    (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (run_id, run_time, table_name, column_name,
-                    "orphan_records", orphan_count, threshold, status))
+                insert_dq_result(
+                    run_id,
+                    run_time,
+                    table_name,
+                    column_name,
+                    "orphan_records",
+                    orphan_count,
+                    threshold,
+                    status
+                )
 
-                total_checks += 1
-                total_failures += (status == "FAIL")
+                total_possible_checks += 1
+                if status != "SKIP":
+                    executed_checks += 1
+                    if status == "FAIL":
+                        failures += 1
 
-            # Freshness check
+            # FRESHNESS CHECK
             if col["freshness_sla_minutes"] is not None:
+
                 freshness, threshold, status = freshness_check(
                     table_name,
                     column_name,
                     col["freshness_sla_minutes"],
                     conn
                 )
+
             else:
+
                 freshness, threshold, status = None, None, "SKIP"
 
-            # Insert Freshness result
-            execute("""
-                INSERT INTO dq_results
-                (run_id, run_time, table_name, column_name, metric_type, metric_value, threshold_value, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (run_id, run_time, table_name, column_name,
-                  "freshness_minutes", freshness, threshold, status))
+            insert_dq_result(
+                run_id,
+                run_time,
+                table_name,
+                column_name,
+                "freshness_minutes",
+                freshness,
+                threshold,
+                status
+            )
 
-            total_checks += 1
-            total_failures += (status == "FAIL")
+            total_possible_checks += 1
+            if status != "SKIP":
+                executed_checks += 1
+                if status == "FAIL":
+                    failures += 1
 
-    # -----------------------------
-    # Generate alerts
-    # -----------------------------
-    failures = fetch_all("""
-        SELECT * FROM dq_results
-        WHERE run_id = (SELECT MAX(run_id) FROM dq_results) 
-          AND status = 'FAIL'
+
+    
+    # ---------------- GENERATE ALERTS ----------------
+    failure_rows = fetch_all("""
+        SELECT * 
+        FROM dq_results
+        WHERE run_id=(SELECT MAX(run_id) FROM dq_results)  AND status='FAIL'
     """)
 
-    for row in failures:
+    for row in failure_rows:
         metric = row["metric_type"]
 
         severity = (
@@ -181,6 +202,7 @@ def main():
         if row["column_name"]:
             message += f".{row['column_name']}"
         message += f" on {metric}"
+
         # Add schema drift details if present
         if row.get("details"):
             message += f" | {row['details']}"
@@ -192,38 +214,56 @@ def main():
         """, (datetime.now(), run_id, row["table_name"],
               row["column_name"], metric, severity, message))
 
+
     conn.close()
 
-    # -----------------------------
-    # Calculate DQ Score
-    # -----------------------------
-    passed_checks = total_checks - total_failures
+    passed_checks = executed_checks - failures
 
-    dq_score = round((passed_checks / total_checks) * 100, 2) if total_checks > 0 else 0
+    dq_score = round((passed_checks / executed_checks) * 100, 2) if executed_checks > 0 else 0
+    coverage = round((executed_checks / total_possible_checks) * 100, 2)
 
     execute("""
-    INSERT INTO dq_run_summary
-    (run_id, run_time, total_checks, passed_checks, failed_checks, dq_score)
-    VALUES (%s,%s,%s,%s,%s,%s)
+        INSERT INTO dq_run_summary
+        (run_id, run_time, total_checks, passed_checks, failed_checks, dq_score)
+        VALUES (%s,%s,%s,%s,%s,%s)
     """, (
         run_id,
         run_time,
-        total_checks,
+        executed_checks,
         passed_checks,
-        total_failures,
+        failures,
         dq_score
     ))
 
-    # -----------------------------
-    # Summary
-    # -----------------------------
-    print("\n✅ DQMP Run Complete")
-    print(f"🕒 Run ID        : {run_id}")
-    print(f"📊 Total Checks  : {total_checks}")
-    print(f"✅ Passed        : {passed_checks}")
-    print(f"❌ Failures      : {total_failures}")
-    print(f"📈 DQ Score      : {dq_score}%")
-    print(f"🚨 Alerts        : {len(failures)}")
+    table_list = ", ".join(tables.keys())
+
+    print(f"Run ID        : {run_id}")
+    print(f"Tables Scanned: {len(tables)} {{{table_list}}}")
+
+    print("\n────────────────────────────────────")
+    print("DATA QUALITY SUMMARY")
+    print("────────────────────────────────────")
+
+    print(f"Rules Defined        : {total_possible_checks}")
+    print(f"Rules Evaluated      : {executed_checks}")
+    print(f"Rules Skipped        : {total_possible_checks - executed_checks}")
+
+    print(f"\nPassed Checks        : {passed_checks}")
+    print(f"Failed Checks        : {failures}")
+
+    print("\n────────────────────────────────────")
+    print("QUALITY METRICS")
+    print("────────────────────────────────────")
+
+    print(f"DQ Score             : {dq_score}%")
+    print(f"Coverage             : {coverage}%")
+
+    print("\n────────────────────────────────────")
+    print("Metric Definitions")
+    print("────────────────────────────────────")
+
+    print("DQ Score  → % of executed checks that passed (Passed Checks / Evaluated Checks)")
+    print("Coverage  → % of defined rules that were executed (Evaluated Checks / Total Rules)")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ CREATE TABLE customers (
     created_at DATETIME
 );
 ALTER TABLE customers
-ADD COLUMN is_primary_key TINYINT(1) DEFAULT 0;
+ADD COLUMN DUMMY_COLUMN_SCHEMA_DRIFT TINYINT(1) DEFAULT 0;
 
 CREATE TABLE orders (
     order_id INT,
@@ -60,3 +60,13 @@ INSERT INTO table_schema_baseline
 SELECT table_name, column_name
 FROM information_schema.columns
 WHERE table_schema = DATABASE();
+
+
+CREATE TABLE dq_run_summary (
+    run_id DATETIME PRIMARY KEY,
+    run_time DATETIME,
+    total_checks INT,
+    passed_checks INT,
+    failed_checks INT,
+    dq_score FLOAT
+);
